@@ -1,0 +1,84 @@
+name: Render mapa reportes PBI
+
+on:
+  schedule:
+    - cron: '0 5,7,9,11,13 * * *'    # 11pm, 1am, 3am, 5am, 7am hora CDMX (cada 2h de noche, UTC-06:00)
+    - cron: '30 13 * * *'            # 7:30am hora (UTC-06:00)
+    - cron: '0,30 14-23,0-4 * * *'   # cada 30 min, de 8am a 10:30pm hora CDMX
+  workflow_dispatch: # manual
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    container:
+      image: rocker/geospatial:4.6.1
+
+    steps:
+      - name: Clonar repositorio público
+        uses: actions/checkout@v4
+
+      - name: Clonar repositorio privado
+        uses: actions/checkout@v4
+        with:
+          repository: cartodev09014/mapa-baches-builder-V2
+          token: ${{ secrets.PRIVATE_REPO_READ_TOKEN }}
+          path: private
+
+      - name: Restaurar `.Renviron`
+        run: echo "${{ secrets.GSHEET_RENVIRON }}" > ~/.Renviron
+
+      - name: Instalar dependencias de sistema
+        run: |
+          apt-get update
+          apt-get install -y libsodium-dev
+
+      - name: Instalar paquetes adicionales
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          R -e "
+          required_packages <- c(
+            'flexdashboard', 'rmarkdown', 'googlesheets4',
+            'htmltools', 'htmlwidgets', 'crosstalk', 'stringr',
+            'readr', 'gargle', 'vroom', 'geojsonsf', 'sodium'
+          )
+          missing <- required_packages[!required_packages %in% installed.packages()]
+          if(length(missing) > 0) {
+            cat('Instalando:', paste(missing, collapse=', '), '\n')
+            install.packages(missing, dependencies = TRUE)
+          } else {
+            cat('Todos los paquetes ya están instalados\n')
+          }
+
+          still_missing <- required_packages[!required_packages %in% installed.packages()]
+          if(length(still_missing) > 0) {
+            stop('No se pudieron instalar estos paquetes: ', paste(still_missing, collapse=', '))
+          }
+
+          if (!requireNamespace('remotes', quietly = TRUE)) {
+            install.packages('remotes')
+          }
+          if (!requireNamespace('tokencodr', quietly = TRUE)) {
+            remotes::install_github('jdtrat/tokencodr')
+          }
+          "
+
+      - name: Zona horaria (UTC-06:00)
+        run: |
+          ln -sf /usr/share/zoneinfo/America/Mexico_City /etc/localtime
+          echo "TZ=America/Mexico_City" >> ~/.Renviron
+
+      - name: Renderizar RMarkdown
+        run: |
+          Rscript -e "rmarkdown::render('private/mapa_baches_v2.Rmd', output_file = 'mapa_baches.html', output_dir = '.')"
+
+      - name: Publicar el mapa actualizado
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add mapa_baches.html
+          git diff --staged --quiet && echo "Sin cambios en el mapa, no se hace commit" || (git commit -m "Actualización automática del mapa" && git push)
