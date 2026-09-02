@@ -5,7 +5,8 @@ on:
     #- cron: '0 5,7,9,11,13 * * *'    # 11pm, 1am, 3am, 5am, 7am hora CDMX (cada 2h de noche, UTC-06:00)
     #- cron: '30 13 * * *'            # 7:30am hora (UTC-06:00)
     #- cron: '0,30 14-23,0-4 * * *'   # cada 30 min, de 8am a 10:30pm hora CDMX
-    - cron: '0 */3 * * *'   # cada 3 horas, en punto (hora UTC)
+    #- cron: '0 */3 * * *'   # cada 3 horas, en punto (hora UTC)
+    - cron: '0 */12 * * *'   # cada 12 horas, en punto (hora UTC)
   workflow_dispatch: # manual
 
 permissions:
